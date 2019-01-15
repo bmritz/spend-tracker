@@ -1,0 +1,29 @@
+# runtime: python37
+runtime: python27
+api_version: 1
+threadsafe: yes
+
+handlers:
+  # This configures Google App Engine to serve the files in the app's static
+  # directory.
+- url: /static
+  static_dir: static
+
+
+- url: /_ah/mail/daily@.*home-economics-227218\.appspotmail\.com  
+  script: handle_incoming_mail.app
+  login: admin
+
+- url: /send_mail
+  script: send_mail.app
+  login: admin
+
+# This handler routes all requests not caught above to your main app. It is
+# required when static routes are defined, but can be omitted (along with
+# the entire handlers section) when there are no static files defined.
+# - url: /.*
+#   script: auto
+
+inbound_services:
+- mail
+- mail_bounce
