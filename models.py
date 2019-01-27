@@ -22,8 +22,8 @@ class Message(ndb.Model):
         plaintext_bodies = mail_message.bodies('text/plain')
         for content_type, body in plaintext_bodies:
             plaintext = body.decode()
-            match = re.search('As of [0-9]{1,2}/[0-9]{1,2}/[0-9]{1,2}', plaintext)
-            as_of_date = datetime.datetime.strptime(match.group()[6:], '%m/%d/%y').date() if match else None
+            match = re.search('Recent transactions as of [0-9]{1,2}/[0-9]{1,2}/[0-9]{1,2}', plaintext)
+            as_of_date = datetime.datetime.strptime(match.group()[-9:-1], '%m/%d/%y').date() if match else None
             msg_key = ndb.Key("Message", cls._hash_mail_message(mail_message))
             return cls(sender=mail_message.sender, content=plaintext, as_of_date=as_of_date, key=msg_key)
 
