@@ -13,7 +13,7 @@ from models import Transaction, Message, Settings
 def is_grocery(txn):
     """Return boolean whether or not the input transaction is a grocery transaction."""
     content = txn.content
-    grocery_keywords = ["Martin's Supermarket", "Fresh Thyme", "Wholefds"]
+    grocery_keywords = ["Martin's Supermarket", "Fresh Thyme", "Wholefds", "Down to Earth"]
     return any(kwd.upper() in content.upper() for kwd in grocery_keywords)
 
 
@@ -31,19 +31,20 @@ def current_months_messages():
     return msgs
 
 
-def transaction_total_for_month():
-    """Return the total for the month for display in the email."""
+def mtd_grocery_transactions():
+    """Return all month-to-date transactions that qualify as grocery purchases.
 
-    # dedup transactions by the transactions id (doesnt include msg id)
-    # the transaction's id a hash of its contents
+    Returns:
+        dict: Keys are transaction key, values are the transaction data
+
+    """
     first_of_month = get_first_of_month()
     txns = {}
     for msg in current_months_messages():
         for txn in Transaction.query(ancestor=msg.key).fetch():
             if txn.date >= first_of_month:
                 txns[txn.key.id()] = txn
-    # txn amounts are negative for expenditures
-    return -sum(txn.amount for txn in txns.values() if is_grocery(txn))
+    return {key: txn for key, txn in txns.items() if is_grocery(txn)}
 
 
 class EmailHandler(webapp2.RequestHandler):
@@ -57,8 +58,14 @@ class EmailHandler(webapp2.RequestHandler):
         else:
             sender_address = Settings.get("sender_address")
             subject = 'Month to Date Grocery spending.'
-            ttl = transaction_total_for_month()
+            txns = mtd_grocery_transactions()
+            ttl = -sum(txn.amount for txn in txns.values())
             body = """Good morning B! You have spent ${:,.2f} this month on groceries.""".format(ttl)
+            body = body + "\n\n"
+
+            txn_details = "\n".join("{} {:35s} ${:,.2f}".format(str(txn.date), txn.content, -txn.amount)
+                                    for txn in sorted(txns.values(), key=lambda x: x.date))
+            body = body + txn_details
             mail.send_mail(sender_address, user_address, subject, body)
             logging.info("An Email was sent to {}".format(user_address))
 
