@@ -17,13 +17,21 @@ class Message(ndb.Model):
     as_of_date = ndb.DateProperty()
     date = ndb.DateProperty(auto_now_add=True)
 
+    @staticmethod
+    def is_transaction_header(s):
+        """Determine if the given string is a transaction header."""
+        match = re.search('Recent transactions as of [0-9]{1,2}/[0-9]{1,2}/[0-9]{1,2}', s)
+        if match:
+            return True
+        return False
+
     @classmethod
     def from_mail_message(cls, mail_message):
         plaintext_bodies = mail_message.bodies('text/plain')
         for content_type, body in plaintext_bodies:
             plaintext = body.decode()
             match = re.search('Recent transactions as of [0-9]{1,2}/[0-9]{1,2}/[0-9]{1,2}', plaintext)
-            as_of_date = datetime.datetime.strptime(match.group()[-9:-1], '%m/%d/%y').date() if match else None
+            as_of_date = datetime.datetime.strptime(match.group()[-8:], '%m/%d/%y').date() if match else None
             msg_key = ndb.Key("Message", cls._hash_mail_message(mail_message))
             return cls(sender=mail_message.sender, content=plaintext, as_of_date=as_of_date, key=msg_key)
 
@@ -43,30 +51,21 @@ class Message(ndb.Model):
             Dict of information about each transaction in the message content.
 
         """
-        section_delimiter_pattern = '^\*.*\*$'
-        for section in iter_sections(self.content, section_delimiter_pattern):
-            section_title, text = section
-            if 'Transactions' in section_title:
-                # transactions are delimited by date indicators MM/DD
-                transaction_section_delimiter = '^[0-9]{1,2}/[0-9]{1,2}$'
-                logging.debug("Transactions Text Lines: %s" % str(text.split('\n')))
-                for transaction in iter_sections(text, transaction_section_delimiter):
-                    mm_dd, transaction_text = transaction
-                    month, day = mm_dd.split("/")
-                    # todo: make sure to handle transactions near beginning of year
-                    date = datetime.date(datetime.date.today().year, int(month), int(day))
 
-                    # in each transaction text, 1st line is accnt, 2nd is payee, 3rd is amt
-                    # there are blank lines in txn text
-                    txn_info = tuple(line for line in transaction_text.split("\n") if line.strip())
-                    try:
-                        acct, content, amt = txn_info
-                    except ValueError:
-                        logging.error("Transaction not parsable. N lines != 3. Transaction Text:\n%s" %
-                                      (transaction_text,))
-                        continue
-                    amt = float(txn_info[2].replace("$", "").replace(',', ''))
-                    yield dict(date=date, account=acct.strip(), content=content.strip(), amount=amt)
+        lines = [line.strip() for line in self.content.split("\n")]
+
+        transaction_header_inx = next(i for i, line in enumerate(lines) if self.is_transaction_header(line))
+        yr = lines[transaction_header_inx][-3:-1]
+        inx = transaction_header_inx + 2
+
+        line = lines[inx]
+        while line:
+            dt, acct, content, amt = re.split(r'\s{2,}', line)
+            dt = datetime.datetime.strptime(dt + '/' + yr, '%m/%d/%y').date()
+            amt = float(amt.replace("$", "").replace(',', ''))
+            yield dict(date=dt, account=acct.strip(), content=content.strip(), amount=amt)
+            inx += 1
+            line = lines[inx]
 
 
 class Transaction(ndb.Model):

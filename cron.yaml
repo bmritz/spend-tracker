@@ -1,5 +1,5 @@
 cron:
-- description: "Weekly Recap Email"
-  url: /send_mail
-  schedule: every monday 9:00
-  timezone: America/Indianapolis
+# - description: "Weekly Recap Email"
+#   url: /send_mail
+#   schedule: every monday 9:00
+#   timezone: America/Indianapolis
